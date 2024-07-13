@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+        input[type="text"],
+        input[type="password"],
+        input[type="datetime-local"],
+        input[type="submit"],
+        button,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-top: 10px;
+        }
+        .response {
+            background-color: #f4f4f4;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Tester</h1>
+    <div class="container">
+        <form id="login-form">
+            <h2>Login</h2>
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <input type="submit" value="Login">
+            <div id="login-response" class="response"></div>
+        </form>
+        <form id="token-form">
+            <h2>Get Token</h2>
+            <button type="button" onclick="getToken()">Get Token</button>
+            <div id="token-response" class="response"></div>
+        </form>
+        <form id="device-status-form">
+            <h2>Get Device Status</h2>
+            <label for="device-select-status">Select Device</label>
+            <select id="device-select-status">
+                <option value="fire_sensor">Fire Sensor</option>
+                <option value="water_level_detector">Water Level Detector</option>
+                <option value="sprinkler_handler">Sprinkler Handler</option>
+            </select>
+            <button type="button" onclick="getDeviceStatus()">Get Device Status</button>
+            <div id="device-status-response" class="response"></div>
+        </form>
+        <form id="device-reports-form">
+            <h2>Get Device Reports</h2>
+            <label for="device-select-reports">Select Device</label>
+            <select id="device-select-reports">
+                <option value="fire_sensor">Fire Sensor</option>
+                <option value="water_level_detector">Water Level Detector</option>
+                <option value="sprinkler_handler">Sprinkler Handler</option>
+            </select>
+            <label for="from-datetime">From Date and Time</label>
+            <input type="datetime-local" id="from-datetime" name="from-datetime">
+            <label for="to-datetime">To Date and Time</label>
+            <input type="datetime-local" id="to-datetime" name="to-datetime">
+            <button type="button" onclick="getDeviceReports()">Get Device Reports</button>
+            <div id="device-reports-response" class="response"></div>
+            <table id="reports-table">
+                <thead>
+                    <tr>
+                        <th>Device Name</th>
+                        <th>Device Type</th>
+                        <th>Timestamp</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Status</th>
+                        <th>Water Level</th>
+                        <th>Action</th>
+                        <th>Current Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </form>
+        <form id="sprinkler-action-form">
+            <h2>Set Sprinkler Action</h2>
+            <label for="sprinkler-action">Select Action</label>
+            <select id="sprinkler-action">
+                <option value="start">Start</option>
+                <option value="stop">Stop</option>
+            </select>
+            <button type="button" onclick="setSprinklerAction()">Set Action</button>
+            <div id="sprinkler-action-response" class="response"></div>
+        </form>
+    </div>
+    <script>
+        let accessToken = '';
+
+        document.getElementById('login-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            fetch('http://localhost:5000/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('login-response').textContent = JSON.stringify(data, null, 2);
+                if (data.access_token) {
+                    accessToken = data.access_token;
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+
+        function getToken() {
+            fetch('http://localhost:5000/token')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('token-response').textContent = JSON.stringify(data, null, 2);
+                    if (data.access_token) {
+                        accessToken = data.access_token;
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function getDeviceStatus() {
+            const device = document.getElementById('device-select-status').value;
+            fetch(`http://localhost:5000/api/devices/${device}/status`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('device-status-response').textContent = JSON.stringify(data, null, 2);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function getDeviceReports() {
+            const device = document.getElementById('device-select-reports').value;
+            const fromDatetime = document.getElementById('from-datetime').value;
+            const toDatetime = document.getElementById('to-datetime').value;
+            fetch(`http://localhost:5000/api/devices/${device}/reports?from_date=${fromDatetime}&to_date=${toDatetime}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('device-reports-response').textContent = JSON.stringify(data, null, 2);
+                const tableBody = document.querySelector('#reports-table tbody');
+                tableBody.innerHTML = '';
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.device_name}</td>
+                        <td>${item.device_type}</td>
+                        <td>${item.timestamp}</td>
+                        <td>${item.latitude}</td>
+                        <td>${item.longitude}</td>
+                        <td>${item.status}</td>
+                        <td>${item.water_level}</td>
+                        <td>${item.action}</td>
+                        <td>${item.current_action}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function setSprinklerAction() {
+            const action = document.getElementById('sprinkler-action').value;
+            fetch('http://localhost:5000/api/devices/sprinkler_handler/action', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + accessToken
+                },
+                body: JSON.stringify({ action })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('sprinkler-action-response').textContent = JSON.stringify(data, null, 2);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>
