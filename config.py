@@ -30,3 +30,6 @@ class Config_Redis:
     JSON_ENCODER = JSONEncoder
     result_backend = 'redis://localhost:6379/0'
     broker_url = 'redis://localhost:6379/0'
+
+SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://postgres:786143143@localhost/iot_db'
+SQLALCHEMY_TRACK_MODIFICATIONS = False

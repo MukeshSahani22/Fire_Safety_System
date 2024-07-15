@@ -8,12 +8,15 @@ from simulated_devices import run_simulated_devices
 from threading import Lock
 import paho.mqtt.client as mqtt
 import time
-from config import Config_Redis, Config
+from config import Config
 from schemas import DeviceDataSchema, LoginSchema
 import logging
 from celery_config import make_celery
 from tasks import save_data_to_db_task
-import psycopg2
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from config import SQLALCHEMY_DATABASE_URI
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,6 +27,10 @@ app.json_encoder = Config.JSON_ENCODER
 
 jwt = JWTManager(app)
 celery = make_celery(app)
+
+# Set up the SQLAlchemy engine and session
+engine = create_engine(SQLALCHEMY_DATABASE_URI)
+Session = sessionmaker(bind=engine)
 
 # Track processed message IDs to avoid duplicates
 processed_message_ids = set()
@@ -51,7 +58,8 @@ def on_message(client, userdata, msg):
         try:
             data = json.loads(msg.payload.decode())
             logging.debug(f"Parsed data: {data}")
-            save_data_to_db_task(data)             
+            print(data)
+            save_data_to_db_task(data)
         except json.JSONDecodeError:
             logging.error("Failed to decode JSON message")
 
@@ -111,33 +119,30 @@ def post_device_data():
 @app.route('/api/devices/<device_name>/status', methods=['GET'])
 @jwt_required()
 def get_device_status(device_name):
+    session = Session()
     try:
-        with psycopg2.connect(
-            dbname="iot_db",
-            user="postgres",
-            password="786143143",
-            host="localhost",
-            port="5432"
-        ) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT * FROM device_data WHERE device_name = %s ORDER BY timestamp DESC LIMIT 1", (device_name,))
-                device = cursor.fetchone()
-                if device:
-                    return jsonify({
-                        "device_name": device[1],
-                        "device_type": device[2],
-                        "timestamp": device[3],
-                        "latitude": device[4],
-                        "longitude": device[5],
-                        "status": device[6],
-                        "water_level": device[7],
-                        "action": device[8],
-                        "current_action": device[9]
-                    })
-                return jsonify({"msg": "No device data found"}), 404
-    except Exception as e:
-        logging.error(f"Error fetching device status: {e}")
+        result = session.execute("""
+            SELECT * FROM device_data WHERE device_name = :device_name ORDER BY timestamp DESC LIMIT 1
+        """, {'device_name': device_name}).fetchone()
+        
+        if result:
+            return jsonify({
+                "device_name": result['device_name'],
+                "device_type": result['device_type'],
+                "timestamp": result['timestamp'],
+                "latitude": result['latitude'],
+                "longitude": result['longitude'],
+                "status": result['status'],
+                "water_level": result['water_level'],
+                "action": result['action'],
+                "current_action": result['current_action']
+            })
+        return jsonify({"msg": "No device data found"}), 404
+    except SQLAlchemyError as e:
+        logging.error(f"Database error: {e}")
         return jsonify({"msg": "Error fetching device status"}), 500
+    finally:
+        session.close()
 
 # API endpoint to get reports for a specific device over a date range
 @app.route('/api/devices/<device_name>/reports', methods=['GET'])
@@ -152,35 +157,30 @@ def get_device_reports(device_name):
     except ValueError:
         return jsonify({"msg": "Invalid date format"}), 400
 
+    session = Session()
     try:
-        with psycopg2.connect(
-            dbname="iot_db",
-            user="postgres",
-            password="786143143",
-            host="localhost",
-            port="5432"
-        ) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT * FROM device_data 
-                    WHERE device_name = %s AND timestamp BETWEEN %s AND %s 
-                    ORDER BY timestamp DESC
-                """, (device_name, from_date, to_date))
-                devices = cursor.fetchall()
-                return jsonify([{
-                    "device_name": device[1],
-                    "device_type": device[2],
-                    "timestamp": device[3],
-                    "latitude": device[4],
-                    "longitude": device[5],
-                    "status": device[6],
-                    "water_level": device[7],
-                    "action": device[8],
-                    "current_action": device[9]
-                } for device in devices])
-    except Exception as e:
-        logging.error(f"Error fetching device reports: {e}")
+        result = session.execute("""
+            SELECT * FROM device_data 
+            WHERE device_name = :device_name AND timestamp BETWEEN :from_date AND :to_date 
+            ORDER BY timestamp DESC
+        """, {'device_name': device_name, 'from_date': from_date, 'to_date': to_date}).fetchall()
+        
+        return jsonify([{
+            "device_name": row['device_name'],
+            "device_type": row['device_type'],
+            "timestamp": row['timestamp'],
+            "latitude": row['latitude'],
+            "longitude": row['longitude'],
+            "status": row['status'],
+            "water_level": row['water_level'],
+            "action": row['action'],
+            "current_action": row['current_action']
+        } for row in result])
+    except SQLAlchemyError as e:
+        logging.error(f"Database error: {e}")
         return jsonify({"msg": "Error fetching device reports"}), 500
+    finally:
+        session.close()
 
 # API endpoint to send command to sprinkler_handler
 @app.route('/api/devices/sprinkler_handler/action', methods=['POST'])
@@ -217,4 +217,5 @@ if __name__ == '__main__':
     mqtt_loop_thread = threading.Thread(target=mqtt_loop)
     mqtt_loop_thread.start()
 
-    app.run(debug=True)
+    from waitress import serve
+    serve(app, host='0.0.0.0', port=8000)
