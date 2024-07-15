@@ -1,7 +1,7 @@
 # Fire_Safety_System
 
 Running MQTT Broker on Docker 
-Running Celery and Redis Server on Broker
+Running Celery and Redis Server on Docker
 
 Application server running on Flask
 
